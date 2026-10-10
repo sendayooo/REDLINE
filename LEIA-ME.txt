@@ -22,10 +22,33 @@ Lança-foguetes: 140 de dano em área; intervalo 1,9 s; alcance 720; raio 100.
 A explosão atinge cada alvo uma única vez. Não causa dano ao próprio player.
 Cada arma guarda sua recarga, inclusive quando está guardada. Trocar leva 0,16 s.
 
+CARRASCO COLOSSAL
+Perseguição rápida a distância, saltos com marcação breve de impacto, cortes
+à distância e combos de espada que miram novamente a cada golpe.
+Última fase: 3 a 5 investidas consecutivas, com 0,25 s de preparo por investida
+e 0,7 s de vulnerabilidade depois da sequência.
+Dash de resposta também se aplica aos golpes de espada e às investidas.
+Durante o salto, não há colisão de contato; o impacto acontece ao aterrissar.
+
+CONTATO E POWER-UPS
+Encostar no boss causa 1 coração de dano. Dash e invulnerabilidade são respeitados.
+A cada segundo de combate existe 5% de chance de surgir um power-up (média de 20 s).
+Cura: recupera 1 coração, até o máximo de 5.
+Escudo: bloqueia o próximo acerto. Não acumula.
+Perseguição: tiros seguem o boss por 8 segundos; paredes bloqueiam normalmente.
+Dano 2x: tiros disparados durante 8 segundos causam o dobro de dano.
+Lentidão: bosses, criaturas, projéteis inimigos e preparos de ataques ficam
+55% mais lentos por 6 segundos. Player, tiros aliados e recargas continuam normais.
+Atravessar: tiros passam pelos obstáculos por 8 segundos, mas não saem da arena.
+Efeitos diferentes podem combinar. Recolher o mesmo efeito renova sua duração.
+Os tiros guardam perseguição, dano e atravessar que estavam ativos ao disparar.
+Power-ups somem após 15 segundos; no máximo 2 no chão. Pause congela os tempos.
+
 DASH DE RESPOSTA
 Se um cone alcançar o player até 0,5 segundo após iniciar um dash, a recarga
 do dash é devolvida imediatamente, inclusive se a invulnerabilidade evitar o dano.
 Cada dash recebe no máximo uma devolução. O dash seguinte pode receber outra.
+Aplica-se também às investidas e aos arcos de espada.
 Não se aplica a tiros comuns ou áreas circulares; não impede dano após acabar a invulnerabilidade.
 
 MUDANÇAS DESTA VERSÃO
@@ -44,8 +67,12 @@ Invulnerabilidade depois de sofrer dano: 0,85 s. Proteção do dash preservada.
 As quatro armas, áudio e controles continuam disponíveis.
 
 VALIDAÇÃO
-80 combinações de ataques e fases executadas em simulação automatizada.
+81 combinações de ataques e fases executadas em simulação automatizada.
 Verificado dano imediato perto e longe, proteção fora da área e durante o dash,
 fissuras simultâneas, teleporte durante ataques e ausência de textos explicativos.
+Verificados os seis power-ups, dano de contato, escudo, perseguição bloqueada
+por paredes, atravessar obstáculos, dano dobrado e lentidão só dos inimigos.
+Verificadas sequências de 3, 4 e 5 investidas, preparo e recuperação,
+saltos, perseguição, combo de três golpes, dash de resposta e limpeza de ataques.
 Sintaxe JavaScript validada. A sensação da dificuldade e o áudio precisam ser
 conferidos jogando no navegador. Não foi validado para celular.

@@ -13,7 +13,7 @@ const TORCH = [[92, 92], [W - 92, 92], [92, H - 92], [W - 92, H - 92]];
 let def, cur = 'chumbo', PCOL, PAUSE; const won = {};
 const keys = {}, mouse = { x: W / 2, y: H / 2, l: false, r: false };
 let state = 'menu', time = 0, shake = 0, flash = 0, stateT = 0;
-let P, B, pb = [], eb = [], haz = [], impacts = [], parts = [], ghosts = [];
+let P, B, pb = [], eb = [], haz = [], impacts = [], pickups = [], dropClock = 0, parts = [], ghosts = [];
 
 /* ---------- Setup ---------- */
 function hash(a, b) { let h = (a * 374761393 + b * 668265263) ^ (a << 5); h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; }
@@ -54,18 +54,24 @@ function* warn(kind, d) {
   const t = { kind, t: d, max: d, ang: aim(), len: 0, radius: kind === 'ring' ? 310 + B.phase * 25 : 460, half: .7 }; B.tele = t; sound.play('warn'); yield d; B.tele = null; return t;
 }
 // Dispersões acertam a região inteira no mesmo instante, sem frente lenta.
+function refundDash() {
+  const sinceDash = run.elapsed - P.lastDashAt;
+  if (state !== 'play' || B.dead || P.hp <= 0 || P.dashRefunded || sinceDash < 0 || sinceDash > .5 + 1e-9) return;
+  P.dashCd = 0; P.dashRefunded = true;
+  ringFx(P.x, P.y, 45, '#99eeff'); sound.play('switch');
+}
+function chargeReachesPlayer() {
+  const dx=P.x-B.x,dy=P.y-B.y,c=Math.cos(B.chAng),sn=Math.sin(B.chAng);
+  const along=dx*c+dy*sn,side=Math.abs(dx*sn-dy*c);
+  return along>=-P.r && along<=B.chLeft+B.r+P.r && side<=B.r+P.r;
+}
 function areaHit(x, y, radius, ang = 0, half = Math.PI, col = '#ff8040') {
   impacts.push({ x, y, radius, ang, half, col, life: .22 });
   const dx = P.x - x, dy = P.y - y, distance = Math.hypot(dx, dy);
   const delta = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - ang), Math.cos(Math.atan2(dy, dx) - ang)));
   const reachesPlayer = distance <= radius + P.r && (half >= Math.PI || delta <= half + Math.asin(Math.min(1, P.r / Math.max(distance, 1))));
   if (reachesPlayer) {
-    // Um cone que alcança um dash recente devolve a recarga, inclusive se o dash evita o dano.
-    const sinceDash = run.elapsed - P.lastDashAt;
-    if (half < Math.PI && state === 'play' && !B.dead && P.hp > 0 && !P.dashRefunded && sinceDash >= 0 && sinceDash <= .5 + 1e-9) {
-      P.dashCd = 0; P.dashRefunded = true;
-      ringFx(P.x, P.y, 45, '#99eeff'); sound.play('switch');
-    }
+    if (half < Math.PI) refundDash();
     hurt();
   }
   sound.play('blast'); shake = Math.max(shake, 6);
@@ -93,12 +99,13 @@ function* rain(n, delay, cnt) {
   }
   yield delay + .3;
 }
-function* charge(strong) {
-  const t = yield* warn('charge', .9);
-  B.chAng = t.ang; B.cvx = Math.cos(t.ang) * 620; B.cvy = Math.sin(t.ang) * 620;
+function* charge(strong, prep = .9, recovery = .3, speed = 620) {
+  const t = yield* warn('charge', cur === 'colosso' ? prep / (B.phase === 3 ? .75 : 1) : prep);
+  B.chAng = t.ang; B.chSpeed = speed; B.cvx = Math.cos(t.ang) * 620; B.cvy = Math.sin(t.ang) * 620;
   B.chLeft = rayLen(B.x, B.y, Math.cos(t.ang), Math.sin(t.ang), B.r); B.chBoss = strong; B.charging = true;
+  if (chargeReachesPlayer()) refundDash();
   while (B.charging) yield .02;
-  yield .3;
+  yield recovery;
 }
 function* spiral() {
   yield* warn('pulse', .38);
@@ -267,24 +274,62 @@ function fxGhost() {
 }
 
 /* ---------- Carrasco Colossal ---------- */
-function* swing(two, rec = 1.3) {
-  const t = yield* warn('arc', .95); sound.play('impact'); const d = Math.atan2(P.y - B.y, P.x - B.x) - t.ang;
-  B.swAng = t.ang; B.swT = .22; shake = 12; burst(B.x + Math.cos(t.ang) * 140, B.y + Math.sin(t.ang) * 140, 20, '#ffb080', 300, 5, .5);
-  if (Math.hypot(P.x - B.x, P.y - B.y) < 200 && Math.abs(Math.atan2(Math.sin(d), Math.cos(d))) < .95) hurt();
-  if (two) { yield .3; yield* swing(false, rec); return; }
-  B.vuln = rec; yield rec;
-}
-function* slam(r, cnt) { haz.push({ x: B.x, y: B.y, r, t: 0, delay: 1.1, cnt }); yield 1.2; B.vuln = 1.2; yield 1.2; }
-function* cracks(lines) {
-  for (let l = 0; l < lines; l++) {
-    const a = aim() + (l - (lines - 1) / 2) * .5;
-    for (let i = 1; i <= 7; i++) { const x = B.x + Math.cos(a) * i * 78, y = B.y + Math.sin(a) * i * 78; if (!blocked(x, y)) haz.push({ x, y, r: 38, t: 0, delay: .65, cnt: B.phase === 3 ? 4 : 0 }); }
+function* swordCombo(count = 2, recovery = .6) {
+  for(let i=0;i<count;i++) {
+    const t=yield* warn('arc', i ? .32 : .5);
+    B.swAng=t.ang;B.swT=.22;
+    areaHit(B.x,B.y,220,t.ang,.95,PCOL[B.phase]);
+    burst(B.x+Math.cos(t.ang)*150,B.y+Math.sin(t.ang)*150,18,'#ffb080',300,5,.4);
+    yield .12;if(state!=='play'||B.dead)return;
   }
-  yield 1.9; B.vuln = .8; yield .8;
+  if(recovery>0){B.vuln=recovery;yield recovery;}
 }
-function* swingCharge() { yield* swing(false, .2); yield* charge(true); }
+function* swing(two, rec = .6) { yield* swordCombo(two ? (B.phase===3?3:2) : 1,rec); }
+function* slam(r,cnt) {haz.push({x:B.x,y:B.y,r,t:0,delay:.55,cnt});yield .6;B.vuln=.55;yield .55;}
+function* cracks(lines) {
+  const target=aim();
+  for(let l=0;l<lines;l++){
+    const ang=target+(l-(lines-1)/2)*.4;
+    for(let i=1;i<=9;i++){const x=B.x+Math.cos(ang)*i*68,y=B.y+Math.sin(ang)*i*68;if(!blocked(x,y))haz.push({x,y,r:43,t:0,delay:.45,cnt:0});}
+  }
+  yield .55;B.vuln=.35;yield .35;
+}
+function leapTarget() {
+  const tx=clamp(P.x+P.vx*.15,M+B.r,W-M-B.r),ty=clamp(P.y+P.vy*.15,M+B.r,H-M-B.r);
+  if(safeSpot(tx,ty,B.r))return {x:tx,y:ty};
+  for(let radius=30;radius<=150;radius+=30)for(let i=0;i<16;i++){
+    const x=clamp(tx+Math.cos(i*TAU/16)*radius,M+B.r,W-M-B.r),y=clamp(ty+Math.sin(i*TAU/16)*radius,M+B.r,H-M-B.r);
+    if(safeSpot(x,y,B.r))return {x,y};
+  }
+  return {x:B.x,y:B.y};
+}
+function* leapSlam(follow = false) {
+  const dest=leapTarget();B.leap={sx:B.x,sy:B.y,x:dest.x,y:dest.y,t:0,duration:B.phase===3?.48:.62,r:130+B.phase*10};sound.play('warn');
+  while(B.leap)yield .02;
+  if(state!=='play'||B.dead)return;
+  if(follow){yield .1;yield* swordCombo(B.phase===3?3:2,.45);}
+  else {B.vuln=.5;yield .5;}
+}
+function* earthCuts() {
+  yield* warn('line',.35);
+  const ang=aim();
+  for(let i=-B.phase;i<=B.phase;i++)shootE(B.x,B.y,ang+i*.14,390+B.phase*40,12,'#ff9d68');
+  yield .2;if(B.phase>1)yield* cracks(B.phase);
+}
+function* dashStorm(count = Math.floor(rnd(3,6))) {
+  for(let i=0;i<count;i++) {
+    yield* charge(false,.25,.08,790);
+    if(state!=='play'||B.dead)return;
+  }
+  B.vuln=.7;yield .7;
+}
+function* colossalAssault() {yield* leapSlam(false);yield* swordCombo(3,0);yield* dashStorm();}
+function drawLeap() {
+  if(!B.leap)return;const j=B.leap;
+  ctx.fillStyle='rgba(255,65,35,.14)';ctx.strokeStyle='#ff9168';ctx.lineWidth=3;ctx.beginPath();ctx.arc(j.x,j.y,j.r,0,TAU);ctx.fill();ctx.stroke();
+}
 function drawKnight() {
-  const by = B.y + Math.sin(B.t * 2) * 2 + (B.vuln > 0 ? 8 : 0), hit = B.hitT > 0, ec = B.vuln > 0 ? '#aa9' : PCOL[B.phase], c = k => hit ? '#fff' : k;
+  const by = B.y + Math.sin(B.t * 2) * 2 + (B.vuln > 0 ? 8 : 0) - (B.leap ? Math.sin(Math.PI*clamp(B.leap.t/B.leap.duration,0,1))*100 : 0), hit = B.hitT > 0, ec = B.vuln > 0 ? '#aa9' : PCOL[B.phase], c = k => hit ? '#fff' : k;
   ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(B.x, B.y + 62, 70, 16, 0, 0, TAU); ctx.fill();
   ctx.save(); ctx.translate(Math.round(B.x), Math.round(by));
   R(-30, 34, 22, 28, c('#1a1a22')); R(8, 34, 22, 28, c('#1a1a22'));
@@ -305,8 +350,8 @@ const BOSSES = {
     att: { 1: [() => fast(6, true), () => ricochet(5), () => cone(2, 2), () => mark(2), duel], 2: [() => fast(8, true), () => ricochet(7), () => cone(3, 2), () => mark(3), duel], 3: [() => fast(10, true), spray, () => ricochet(8), () => mark(3), duel] },
     obs: mkObs([[280, 210], [680, 210], [280, 430], [680, 430]], ['cactus', 'barrel']), tile: (s, w) => w ? `rgb(${s + 70},${s + 35},${s + 5})` : `rgb(${s + 95},${s + 75},${s + 40})`, dark: 'rgba(25,12,6,.55)', flame: '#ffcf70', draw: drawGhost, fx: fxGhost,
     upd(dt) { if (B.duelGo && P.dashT > 0) B.parried = true; B.duelA += ((B.duel ? 1 : 0) - B.duelA) * Math.min(1, dt * 6); } },
-  colosso: { name: 'Carrasco Colossal', desc: ['Castelo em ruínas. Golpes pesados:', 'ataque quando ele se cansa.'], hp: 3300, r: 56, pcol: ['', '#ff3030', '#ff5020', '#ff0080'], pause: [0, 1.0, .8, .6],
-    att: { 1: [() => swing(false), () => slam(150, 14), () => cracks(1)], 2: [() => swing(true), () => slam(170, 16), () => cracks(2), () => charge(false)], 3: [() => swing(true), () => slam(230, 22), () => cracks(3), () => charge(true), swingCharge] },
+  colosso: { name: 'Carrasco Colossal', desc: ['Castelo em ruínas. Golpes pesados:', 'Saltos, combos e investidas.'], hp: 3300, r: 56, pcol: ['', '#ff3030', '#ff5020', '#ff0080'], pause: [0, .3, .2, .08],
+    att: { 1: [() => swordCombo(2), () => leapSlam(), earthCuts, () => charge(false,.45,.5,700)], 2: [() => swordCombo(2,.5), () => leapSlam(true), earthCuts, () => dashStorm(2)], 3: [dashStorm, colossalAssault, () => swordCombo(3,.5), () => dashStorm(), () => leapSlam(true)] },
     obs: mkObs([[230, 200], [730, 200], [230, 440], [730, 440]], ['col']), tile: (s, w) => w ? `rgb(${s + 22},${s + 8},${s + 4})` : `rgb(${s + 6},${s - 2},${s - 2})`, dark: 'rgba(14,2,2,.72)', flame: '#ff4010', draw: drawKnight }
 };
 
@@ -619,20 +664,20 @@ function setupAudio() {
 function clearInput() { mouse.l = mouse.r = false; for (const k in keys) keys[k] = false; }
 function reset(id) {
   if (id) cur = id; def = BOSSES[cur]; PCOL = def.pcol; PAUSE = def.pause; PILLARS = def.obs; buildFloor();
-  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, lastDashAt: -Infinity, dashRefunded: false, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
-  B = { x: W / 2, y: 170, r: def.r, hp: def.hp, max: def.hp, shown: def.hp, vuln: 0, swT: 0, lz: null, core: 0, zn: [], mi: [], pt: [], duel: 0, duelA: 0, duelGo: false, parried: false, phase: 1, gen: null, wait: 1.8, hitT: 0, dead: false, deathT: 0, charging: false, cvx: 0, cvy: 0, chLeft: 0, chBoss: false, tele: null, phaseMsg: 0, last: -1, t: 0, tp: null, moveTarget: null, moveCd: 0 };
-  pb = []; eb = []; haz = []; impacts = []; parts = []; ghosts = []; shake = 0; flash = 0; stateT = 0;
+  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, homingT: 0, damageT: 0, slowT: 0, pierceT: 0, shield: false, lastDashAt: -Infinity, dashRefunded: false, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
+  B = { x: W / 2, y: 170, r: def.r, hp: def.hp, max: def.hp, shown: def.hp, vuln: 0, swT: 0, lz: null, core: 0, zn: [], mi: [], pt: [], duel: 0, duelA: 0, duelGo: false, parried: false, phase: 1, gen: null, wait: 1.8, hitT: 0, dead: false, deathT: 0, charging: false, chSpeed: 620, leap: null, cvx: 0, cvy: 0, chLeft: 0, chBoss: false, tele: null, phaseMsg: 0, last: -1, t: 0, tp: null, moveTarget: null, moveCd: 0 };
+  pb = []; eb = []; haz = []; impacts = []; pickups = []; dropClock = 0; parts = []; ghosts = []; shake = 0; flash = 0; stateT = 0;
   run = { elapsed: 0, damage: 0, recorded: false }; musicClock = 0; musicStep = 0; clearInput();
 }
 function start(id) { sound.init(); reset(id); state = 'play'; cv.focus(); }
 function clearBossAttacks() {
-  B.gen = null; B.charging = false; B.tele = null; B.duel = 0; B.duelGo = false; B.duelA = 0; B.tp = null;
+  B.gen = null; B.charging = false; B.leap = null; resolve(B); B.tele = null; B.duel = 0; B.duelGo = false; B.duelA = 0; B.tp = null;
   B.lz = null; B.zn.length = 0; B.mi.length = 0; B.pt.length = 0; B.swT = 0;
   if (def.clr) def.clr(); eb.length = 0; haz.length = 0; impacts.length = 0;
 }
 function killBoss() {
   if (B.dead) return;
-  B.hp = 0; B.dead = true; B.deathT = 0; clearBossAttacks(); pb.length = 0; shake = 20; flash = .4; recordWin(); sound.play('blast');
+  B.hp = 0; B.dead = true; B.deathT = 0; pickups.length = 0; clearBossAttacks(); pb.length = 0; shake = 20; flash = .4; recordWin(); sound.play('blast');
 }
 function damageBoss(amount, effects = true) {
   if (B.dead || state !== 'play') return;
@@ -642,6 +687,7 @@ function damageBoss(amount, effects = true) {
 }
 function hurt(n = 1) {
   if (P.inv > 0 || state !== 'play' || B.dead || P.hp <= 0) return false;
+  if (P.shield) { P.shield = false; P.inv = .3; ringFx(P.x, P.y, 50, '#8be5ff'); sound.play('armor'); return true; }
   run.damage += Math.min(n, P.hp); P.hp = Math.max(0, P.hp - n); P.inv = .85; shake = Math.max(shake, 12); flash = .35;
   sound.play('hurt'); burst(P.x, P.y, 16, '#ff4040', 200, 4);
   if (P.hp <= 0) { state = 'lose'; stateT = 0; burst(P.x, P.y, 40, '#cc3333', 300, 5); clearBossAttacks(); pb.length = 0; clearInput(); sound.play('lose'); }
@@ -679,7 +725,7 @@ function walkBoss(tx, ty, speed, dt) {
   }
 }
 function moveBoss(dt) {
-  if (B.lz || B.duel || B.vuln > 0 || B.core > 0 || B.swT > 0 || B.phaseMsg > 0) return;
+  if (B.leap || B.lz || B.duel || B.vuln > 0 || B.core > 0 || B.swT > 0 || B.phaseMsg > 0) return;
   // Fixar a origem apenas durante o preparo de uma área de dano.
   if (B.tele && ['cone', 'ring', 'charge', 'arc'].includes(B.tele.kind)) return;
   B.moveCd -= dt;
@@ -694,7 +740,7 @@ function moveBoss(dt) {
     walkBoss(B.x + Math.cos(a) * 100, B.y + Math.sin(a) * 100, 115 + B.phase * 15, dt);
     return;
   }
-  if (cur === 'colosso') { if (Math.hypot(P.x-B.x,P.y-B.y)>140) walkBoss(P.x,P.y,75+B.phase*12,dt); return; }
+  if (cur === 'colosso') { const distance=Math.hypot(P.x-B.x,P.y-B.y);if(distance>100)walkBoss(P.x,P.y,distance>250?245+B.phase*25:140+B.phase*12,dt);return; }
   if (cur === 'fantasma') {
     const a = aim(), d = Math.hypot(P.x-B.x,P.y-B.y), radial = d < 270 ? -1 : d > 360 ? .6 : 0, side = Math.sin(B.t * .35) > 0 ? 1 : -1;
     walkBoss(B.x + Math.cos(a)*radial*100 + Math.cos(a+Math.PI/2)*side*80, B.y + Math.sin(a)*radial*100 + Math.sin(a+Math.PI/2)*side*80, 175 + B.phase * 12, dt); return;
@@ -723,20 +769,26 @@ function updateBoss(dt) {
     if (B.tele.t > .3 && ['cone','line','charge','arc'].includes(B.tele.kind)) B.tele.ang=aim();
     B.tele.len=rayLen(B.x,B.y,Math.cos(B.tele.ang),Math.sin(B.tele.ang),B.r);
   }
+  if(B.leap){
+    const j=B.leap;j.t=Math.min(j.duration,j.t+dt);const k=j.t/j.duration;
+    B.x=j.sx+(j.x-j.sx)*k;B.y=j.sy+(j.y-j.sy)*k;
+    if(k>=1){B.leap=null;resolve(B);areaHit(B.x,B.y,j.r,0,Math.PI,PCOL[B.phase]);burst(B.x,B.y,35,'#ff9d68',320,5);}
+    if(state!=='play'||B.dead)return;
+  }
   if (B.charging) {
-    const st=Math.min(620*dt,B.chLeft), steps=Math.max(1,Math.ceil(st/6));
+    const st=Math.min(B.chSpeed*dt,B.chLeft), steps=Math.max(1,Math.ceil(st/6));
     for (let i=0;i<steps;i++) {
       const nx=B.x+Math.cos(B.chAng)*st/steps, ny=B.y+Math.sin(B.chAng)*st/steps;
       if (!safeSpot(nx,ny,B.r)) { B.chLeft=0; break; }
       B.x=nx; B.y=ny; B.chLeft-=st/steps;
-      if (Math.hypot(P.x-B.x,P.y-B.y)<B.r+P.r*.7) hurt();
+      if (Math.hypot(P.x-B.x,P.y-B.y)<=B.r+P.r) { refundDash(); hurt(); }
       if (state!=='play') return;
     }
     burst(B.x,B.y+20,1,'#aaa',60,4,.4);
     if (B.chLeft<=.5) { B.charging=false; shake=14; sound.play('impact'); ringFx(B.x,B.y,90,'#fff'); burst(B.x,B.y,24,'#bbb',260,5); if(B.chBoss) areaHit(B.x,B.y,90,0,Math.PI,PCOL[B.phase]); }
   } else moveBoss(dt);
   if (B.wait>0) { B.wait-=dt; return; }
-  if (B.charging || B.tp) return;
+  if (B.charging || B.tp || B.leap) return;
   if (!B.gen) B.gen=pickAttack();
   const gen = B.gen, r=gen.next();
   if (B.dead || state!=='play') return;
@@ -747,10 +799,10 @@ function switchWeapon(index) {
   P.weapon = (index + WEAPONS.length) % WEAPONS.length; P.swapCd = .16; sound.play('switch');
 }
 function fire() {
-  const w = WEAPONS[P.weapon]; P.cooldowns[P.weapon]=w.cd; P.fireCd=w.cd;
+  const w = WEAPONS[P.weapon]; P.cooldowns[P.weapon]=w.cd; P.fireCd=P.cooldowns[P.weapon];
   for(let i=0;i<w.pellets;i++) {
     const a=P.face+(w.pellets>1 ? (i/(w.pellets-1)-.5)*w.spread*2+rnd(-.018,.018) : rnd(-w.spread,w.spread));
-    pb.push({x:P.x,y:P.y,vx:Math.cos(a)*w.speed,vy:Math.sin(a)*w.speed,life:w.range/w.speed,damage:w.damage,weapon:P.weapon,range:w.range,travel:0,blast:w.blast||0,color:w.color,r:P.weapon===3?5:2});
+    pb.push({x:P.x,y:P.y,vx:Math.cos(a)*w.speed,vy:Math.sin(a)*w.speed,life:w.range/w.speed,damage:w.damage*(P.damageT>0?2:1),homing:P.homingT>0,pierce:P.pierceT>0,weapon:P.weapon,range:w.range,travel:0,blast:w.blast||0,color:w.color,r:P.weapon===3?5:2});
   }
   P.rec=1; P.flashT=.06; P.x-=Math.cos(P.face)*w.kick; P.y-=Math.sin(P.face)*w.kick; resolve(P); shake=Math.max(shake,P.weapon===0?1.2:3);
   burst(P.x+Math.cos(P.face)*28,P.y+Math.sin(P.face)*28,P.weapon===1?10:3,w.color,160,3,.2); sound.play('gun'+P.weapon);
@@ -758,6 +810,7 @@ function fire() {
 function updatePlayer(dt) {
   let ax=(keys.KeyD?1:0)-(keys.KeyA?1:0), ay=(keys.KeyS?1:0)-(keys.KeyW?1:0); const l=Math.hypot(ax,ay); if(l){ax/=l;ay/=l;}
   P.face=Math.atan2(mouse.y-P.y,mouse.x-P.x); P.inv-=dt; P.dashCd-=dt; P.flashT-=dt; P.rec=Math.max(0,P.rec-dt*8); P.swapCd=Math.max(0,P.swapCd-dt);
+  for(const timer of ['homingT','damageT','slowT','pierceT'])P[timer]=Math.max(0,P[timer]-dt);
   P.cooldowns=P.cooldowns.map(c=>Math.max(0,c-dt)); P.fireCd=P.cooldowns[P.weapon];
   if((mouse.r||keys.Space)&&P.dashCd<=0&&P.dashT<=0) { P.dvx=l?ax:Math.cos(P.face); P.dvy=l?ay:Math.sin(P.face); P.dashT=.18; P.dashCd=1.1; P.lastDashAt=run.elapsed; P.dashRefunded=false; P.inv=Math.max(P.inv,.3); shake=Math.max(shake,3); ringFx(P.x,P.y,40,'#99ccff'); sound.play('dash'); }
   if(P.dashT>0){P.dashT=Math.max(0,P.dashT-dt);P.vx=P.dvx*720;P.vy=P.dvy*720;if(ghosts.length<30)ghosts.push({x:P.x,y:P.y,a:P.face,life:.25});}
@@ -776,12 +829,14 @@ function explode(b) {
   for(const m of [...B.mi])if(Math.hypot(m.x-b.x,m.y-b.y)<b.blast+m.r)hitMinion(m,b.damage);
   if(!B.dead&&Math.hypot(B.x-b.x,B.y-b.y)<b.blast+B.r*.9)damageBoss(b.damage);
 }
-function updateBullets(dt) {
+function updateBullets(dt, enemyDt = dt) {
   for(let i=pb.length-1;i>=0;i--){
-    const b=pb[i];if(!b)continue;const speed=Math.hypot(b.vx,b.vy),steps=Math.max(1,Math.ceil(speed*dt/5));let consumed=false;
+    const b=pb[i];if(!b)continue;
+    if(b.homing&&!B.dead){const speed=Math.hypot(b.vx,b.vy),a=Math.atan2(b.vy,b.vx),target=Math.atan2(B.y-b.y,B.x-b.x),delta=Math.atan2(Math.sin(target-a),Math.cos(target-a)),turned=a+clamp(delta,-6*dt,6*dt);b.vx=Math.cos(turned)*speed;b.vy=Math.sin(turned)*speed;}
+    const speed=Math.hypot(b.vx,b.vy),steps=Math.max(1,Math.ceil(speed*dt/5));let consumed=false;
     for(let s=0;s<steps&&!consumed;s++){
       const distance=Math.min(speed*dt/steps,b.range-b.travel);b.x+=b.vx/speed*distance;b.y+=b.vy/speed*distance;b.travel+=distance;b.life-=dt/steps;
-      const wall=blocked(b.x,b.y),minion=B.mi.find(m=>Math.hypot(b.x-m.x,b.y-m.y)<m.r+b.r),boss=!B.dead&&Math.hypot(b.x-B.x,b.y-B.y)<B.r*.9+b.r,expired=b.travel>=b.range-.01;
+      const wall=b.pierce ? (b.x<M||b.y<M||b.x>W-M||b.y>H-M) : blocked(b.x,b.y),minion=B.mi.find(m=>Math.hypot(b.x-m.x,b.y-m.y)<m.r+b.r),boss=!B.dead&&!B.leap&&Math.hypot(b.x-B.x,b.y-B.y)<B.r*.9+b.r,expired=b.travel>=b.range-.01;
       if(wall||minion||boss||expired){
         consumed=true;
         if(b.blast)explode(b);
@@ -794,10 +849,10 @@ function updateBullets(dt) {
   }
   for(let i=eb.length-1;i>=0;i--){
     const b=eb[i];if(!b)continue;
-    if(b.hm&&b.life>b.hl){const sp=Math.hypot(b.vx,b.vy),a=Math.atan2(b.vy,b.vx),d=Math.atan2(P.y-b.y,P.x-b.x)-a,na=a+clamp(Math.atan2(Math.sin(d),Math.cos(d)),-b.hm*dt,b.hm*dt);b.vx=Math.cos(na)*sp;b.vy=Math.sin(na)*sp;}
-    b.life-=dt;let remove=b.life<=0;const steps=Math.max(1,Math.ceil(Math.hypot(b.vx,b.vy)*dt/5));
+    if(b.hm&&b.life>b.hl){const sp=Math.hypot(b.vx,b.vy),a=Math.atan2(b.vy,b.vx),d=Math.atan2(P.y-b.y,P.x-b.x)-a,na=a+clamp(Math.atan2(Math.sin(d),Math.cos(d)),-b.hm*enemyDt,b.hm*enemyDt);b.vx=Math.cos(na)*sp;b.vy=Math.sin(na)*sp;}
+    b.life-=enemyDt;let remove=b.life<=0;const steps=Math.max(1,Math.ceil(Math.hypot(b.vx,b.vy)*enemyDt/5));
     for(let j=0;j<steps&&!remove;j++){
-      const ox=b.x,oy=b.y;b.x+=b.vx*dt/steps;b.y+=b.vy*dt/steps;
+      const ox=b.x,oy=b.y;b.x+=b.vx*enemyDt/steps;b.y+=b.vy*enemyDt/steps;
       if(blocked(b.x,b.y)){
         if(b.bn>0){const bx=blocked(b.x,oy),by=blocked(ox,b.y);if(bx||!by)b.vx=-b.vx;if(by||!bx)b.vy=-b.vy;b.x=ox;b.y=oy;b.bn--;burst(b.x,b.y,3,'#fff',90,2,.2);}
         else remove=true;
@@ -807,10 +862,73 @@ function updateBullets(dt) {
     if(remove){burst(b.x,b.y,3,b.col,90,2,.2);eb.splice(i,1);}
   }
 }
+/* ---------- Power-ups ---------- */
+const DROP_CHANCE = .05;
+function spawnPickup() {
+  if (state !== 'play' || B.dead || pickups.length >= 2) return false;
+  for (let i = 0; i < 60; i++) {
+    const x = rnd(M + 24, W - M - 24), y = rnd(M + 24, H - M - 24);
+    if (!safeSpot(x, y, 16, 45) || Math.hypot(x - B.x, y - B.y) < B.r + 60 ||
+        pickups.some(p => Math.hypot(x-p.x,y-p.y)<50) ||
+        haz.some(h => Math.hypot(x-h.x,y-h.y)<h.r+20) ||
+        B.zn.some(z => Math.hypot(x-z.x,y-z.y)<z.r+20)) continue;
+    const types = ['heal', 'homing', 'damage', 'slow', 'pierce', 'shield'];
+    pickups.push({ x, y, type: types[Math.floor(Math.random() * types.length)], life: 15 });
+    ringFx(x, y, 35, '#ffe494'); return true;
+  }
+  return false;
+}
+function updatePickups(dt) {
+  if (state !== 'play' || B.dead) return;
+  dropClock += dt;
+  while (dropClock >= 1) { dropClock -= 1; if (Math.random() < DROP_CHANCE) spawnPickup(); }
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const item = pickups[i]; item.life -= dt;
+    if (item.life <= 0) { pickups.splice(i, 1); continue; }
+    if (Math.hypot(P.x-item.x,P.y-item.y) > P.r+16) continue;
+    if (item.type === 'heal') { if (P.hp >= 5) continue; P.hp = Math.min(5,P.hp+1); }
+    else if (item.type === 'homing') P.homingT = 8;
+    else if (item.type === 'damage') P.damageT = 8;
+    else if (item.type === 'slow') P.slowT = 6;
+    else if (item.type === 'pierce') P.pierceT = 8;
+    else { if (P.shield) continue; P.shield = true; }
+    pickups.splice(i, 1); ringFx(P.x,P.y,45,'#ffe494'); sound.play('switch');
+  }
+}
+function bossContact() {
+  if (state === 'play' && !B.dead && !B.leap && Math.hypot(P.x-B.x,P.y-B.y) <= B.r+P.r) { if(B.charging)refundDash();hurt(1); }
+}
+const POWERUPS = {
+  heal: { color: '#ff6f86', symbol: '+', name: 'CURA' },
+  homing: { color: '#aaff89', symbol: '◎', name: 'PERSEGUIÇÃO', timer: 'homingT' },
+  damage: { color: '#ff9e58', symbol: '2×', name: 'DANO 2×', timer: 'damageT' },
+  slow: { color: '#c4a0ff', symbol: '◷', name: 'LENTIDÃO', timer: 'slowT' },
+  pierce: { color: '#ffe28b', symbol: '→', name: 'ATRAVESSAR', timer: 'pierceT' },
+  shield: { color: '#8be5ff', symbol: '◇', name: 'ESCUDO' }
+};
+function drawPickups() {
+  for (const p of pickups) {
+    const power=POWERUPS[p.type];ctx.save();ctx.globalAlpha=p.life<3 ? .55+.45*Math.sin(time*12) : 1;
+    ctx.fillStyle='#111d2d';ctx.strokeStyle=power.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,17,0,TAU);ctx.fill();ctx.stroke();
+    txt(power.symbol,p.x,p.y+5,p.type==='damage'?13:21,power.color);
+    txt(power.name,p.x,p.y+32,10,power.color);ctx.restore();
+  }
+  if(P.shield){ctx.strokeStyle='#8be5ff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(P.x,P.y,21,0,TAU);ctx.stroke();}
+}
+function drawBuffs() {
+  let row=0;
+  for(const power of Object.values(POWERUPS)) {
+    if(power.timer&&P[power.timer]>0)txt(power.name+' '+Math.ceil(P[power.timer])+'s',22,91+row++*17,11,power.color,'left');
+    else if(power.name==='ESCUDO'&&P.shield)txt('ESCUDO',22,91+row++*17,11,power.color,'left');
+  }
+}
 function update(dt) {
   if(!B.dead)run.elapsed+=dt;
-  updatePlayer(dt); updateBoss(dt); if(state!=='play')return;
-  if(!B.dead){updateBullets(dt);if(state!=='play')return;if(!B.dead)updateHaz(dt);}
+  updatePlayer(dt); bossContact(); if(state!=='play')return;
+  const enemyDt=dt*(P.slowT>0?.45:1);
+  updateBoss(enemyDt); bossContact(); if(state!=='play')return;
+  updatePickups(dt);
+  if(!B.dead){updateBullets(dt,enemyDt);if(state!=='play')return;if(!B.dead)updateHaz(enemyDt);}
   updateFx(dt);
 }
 /* ---------- Apresentação e informações de combate ---------- */
@@ -849,7 +967,7 @@ function drawTele() {
   ctx.save();ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([8,5]);
   ctx.fillStyle=t.kind==='line'?'rgba(100,220,255,.14)':'rgba(255,110,55,.12)';
   if(t.kind==='cone'||t.kind==='arc'){
-    const radius=t.kind==='arc'?200:t.radius,angle=t.kind==='arc'?.95:t.half;
+    const radius=t.kind==='arc'?220:t.radius,angle=t.kind==='arc'?.95:t.half;
     ctx.beginPath();ctx.moveTo(B.x,B.y);ctx.arc(B.x,B.y,radius,t.ang-angle,t.ang+angle);ctx.closePath();ctx.fill();ctx.stroke();
   }else if(t.kind==='charge'){
     ctx.save();ctx.translate(B.x,B.y);ctx.rotate(t.ang);ctx.fillRect(0,-B.r,t.len+B.r,B.r*2);ctx.strokeRect(0,-B.r,t.len+B.r,B.r*2);
@@ -880,6 +998,7 @@ function drawUI() {
   R(0,0,W,60,'#0a0d16');R(0,H-63,W,63,'#0a0d16');
   for(let i=0;i<5;i++)heart(18+i*33,18,i<P.hp);
   const bx=215,bw=530;txt(def.name.toUpperCase(),W/2,23,15,'#e0e6f0');R(bx-2,31,bw+4,17,'#000');R(bx,33,bw,13,'#30212c');R(bx,33,bw*clamp(B.shown/B.max,0,1),13,'#ffffff70');R(bx,33,bw*clamp(B.hp/B.max,0,1),13,PCOL[B.phase]);R(bx+bw*.65,31,2,17,'#111');R(bx+bw*.30,31,2,17,'#111');
+  drawBuffs();
   txt('FASE '+B.phase+' / 3',W/2,72,12,PCOL[B.phase]);txt(Math.ceil(B.hp)+' / '+B.max,755,44,11,'#c7d0dd','left');
   const cd=clamp(1-P.dashCd/1.1,0,1);txt('DASH',22,H-39,12,'#9cf','left');R(22,H-30,108,7,'#23324a');R(22,H-30,108*cd,7,cd>=1?'#66ddff':'#376384');txt(formatTime(run.elapsed),22,H-9,11,'#9eaec4','left');
   for(let i=0;i<4;i++){const x=160+i*159,w=WEAPONS[i],active=i===P.weapon;R(x,H-55,150,47,active?'#243448':'#141d2c');if(active){ctx.strokeStyle=w.color;ctx.lineWidth=1;ctx.strokeRect(x+.5,H-54.5,149,46);}drawWeapon(i,x+27,H-36,.65);txt((i+1)+' '+w.short,x+52,H-34,11,active?w.color:'#8593a7','left');const ready=1-P.cooldowns[i]/w.cd;R(x+52,H-23,87,3,'#354055');R(x+52,H-23,87*clamp(ready,0,1),3,w.color);if(active&&P.cooldowns[i]>.05)txt(P.cooldowns[i].toFixed(1)+'s',x+138,H-10,9,'#b4c1d0','right');}
@@ -900,7 +1019,7 @@ function render() {
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(rnd(-shake,shake),rnd(-shake,shake));
   ctx.drawImage(floorC,0,0);drawArena();drawPillars();drawTorches();if(!(B.dead&&B.deathT>2.8))drawBoss();if(P.hp>0)drawPlayer();drawLight();
   // Danger indicators stay above the darkness and scenery for readability.
-  if(def.fx)def.fx();drawHaz();drawTele();drawProjectiles();drawParts();drawImpacts();ctx.restore();drawUI();
+  if(def.fx)def.fx();drawHaz();drawLeap();drawTele();drawProjectiles();drawParts();drawImpacts();drawPickups();ctx.restore();drawUI();
   if(state==='menu'){
     R(0,0,W,H,'#080d17ec');txt('ARSENAL',W/2,139,14,'#91a7c6');txt('ARENA DOS BOSSES',W/2,199,49,'#ffb35f');txt('Seis desafios. Quatro armas. Uma chance de dominar a arena.',W/2,236,15,'#a8b9d0');
     for(let i=0;i<4;i++){drawWeapon(i,330+i*100,296,1.3);}
