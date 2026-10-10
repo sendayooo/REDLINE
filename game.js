@@ -58,7 +58,16 @@ function areaHit(x, y, radius, ang = 0, half = Math.PI, col = '#ff8040') {
   impacts.push({ x, y, radius, ang, half, col, life: .22 });
   const dx = P.x - x, dy = P.y - y, distance = Math.hypot(dx, dy);
   const delta = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - ang), Math.cos(Math.atan2(dy, dx) - ang)));
-  if (distance <= radius + P.r && (half >= Math.PI || delta <= half + Math.asin(Math.min(1, P.r / Math.max(distance, 1))))) hurt();
+  const reachesPlayer = distance <= radius + P.r && (half >= Math.PI || delta <= half + Math.asin(Math.min(1, P.r / Math.max(distance, 1))));
+  if (reachesPlayer) {
+    // Um cone que alcança um dash recente devolve a recarga, inclusive se o dash evita o dano.
+    const sinceDash = run.elapsed - P.lastDashAt;
+    if (half < Math.PI && state === 'play' && !B.dead && P.hp > 0 && !P.dashRefunded && sinceDash >= 0 && sinceDash <= .5 + 1e-9) {
+      P.dashCd = 0; P.dashRefunded = true;
+      ringFx(P.x, P.y, 45, '#99eeff'); sound.play('switch');
+    }
+    hurt();
+  }
   sound.play('blast'); shake = Math.max(shake, 6);
 }
 function* cone(n, bursts) {
@@ -610,7 +619,7 @@ function setupAudio() {
 function clearInput() { mouse.l = mouse.r = false; for (const k in keys) keys[k] = false; }
 function reset(id) {
   if (id) cur = id; def = BOSSES[cur]; PCOL = def.pcol; PAUSE = def.pause; PILLARS = def.obs; buildFloor();
-  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
+  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, lastDashAt: -Infinity, dashRefunded: false, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
   B = { x: W / 2, y: 170, r: def.r, hp: def.hp, max: def.hp, shown: def.hp, vuln: 0, swT: 0, lz: null, core: 0, zn: [], mi: [], pt: [], duel: 0, duelA: 0, duelGo: false, parried: false, phase: 1, gen: null, wait: 1.8, hitT: 0, dead: false, deathT: 0, charging: false, cvx: 0, cvy: 0, chLeft: 0, chBoss: false, tele: null, phaseMsg: 0, last: -1, t: 0, tp: null, moveTarget: null, moveCd: 0 };
   pb = []; eb = []; haz = []; impacts = []; parts = []; ghosts = []; shake = 0; flash = 0; stateT = 0;
   run = { elapsed: 0, damage: 0, recorded: false }; musicClock = 0; musicStep = 0; clearInput();
@@ -750,7 +759,7 @@ function updatePlayer(dt) {
   let ax=(keys.KeyD?1:0)-(keys.KeyA?1:0), ay=(keys.KeyS?1:0)-(keys.KeyW?1:0); const l=Math.hypot(ax,ay); if(l){ax/=l;ay/=l;}
   P.face=Math.atan2(mouse.y-P.y,mouse.x-P.x); P.inv-=dt; P.dashCd-=dt; P.flashT-=dt; P.rec=Math.max(0,P.rec-dt*8); P.swapCd=Math.max(0,P.swapCd-dt);
   P.cooldowns=P.cooldowns.map(c=>Math.max(0,c-dt)); P.fireCd=P.cooldowns[P.weapon];
-  if((mouse.r||keys.Space)&&P.dashCd<=0&&P.dashT<=0) { P.dvx=l?ax:Math.cos(P.face); P.dvy=l?ay:Math.sin(P.face); P.dashT=.18; P.dashCd=1.1; P.inv=Math.max(P.inv,.3); shake=Math.max(shake,3); ringFx(P.x,P.y,40,'#99ccff'); sound.play('dash'); }
+  if((mouse.r||keys.Space)&&P.dashCd<=0&&P.dashT<=0) { P.dvx=l?ax:Math.cos(P.face); P.dvy=l?ay:Math.sin(P.face); P.dashT=.18; P.dashCd=1.1; P.lastDashAt=run.elapsed; P.dashRefunded=false; P.inv=Math.max(P.inv,.3); shake=Math.max(shake,3); ringFx(P.x,P.y,40,'#99ccff'); sound.play('dash'); }
   if(P.dashT>0){P.dashT=Math.max(0,P.dashT-dt);P.vx=P.dvx*720;P.vy=P.dvy*720;if(ghosts.length<30)ghosts.push({x:P.x,y:P.y,a:P.face,life:.25});}
   else {const k=Math.min(1,dt*14);P.vx+=(ax*230-P.vx)*k;P.vy+=(ay*230-P.vy)*k;}
   let belt=0;if(cur==='matriarca'&&!B.dead&&P.dashT<=0){if(P.y>210&&P.y<244)belt=65;if(P.y>420&&P.y<454)belt=-65;}

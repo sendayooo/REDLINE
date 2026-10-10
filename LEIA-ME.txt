@@ -22,6 +22,12 @@ Lança-foguetes: 140 de dano em área; intervalo 1,9 s; alcance 720; raio 100.
 A explosão atinge cada alvo uma única vez. Não causa dano ao próprio player.
 Cada arma guarda sua recarga, inclusive quando está guardada. Trocar leva 0,16 s.
 
+DASH DE RESPOSTA
+Se um cone alcançar o player até 0,5 segundo após iniciar um dash, a recarga
+do dash é devolvida imediatamente, inclusive se a invulnerabilidade evitar o dano.
+Cada dash recebe no máximo uma devolução. O dash seguinte pode receber outra.
+Não se aplica a tiros comuns ou áreas circulares; não impede dano após acabar a invulnerabilidade.
+
 MUDANÇAS DESTA VERSÃO
 Carrasco de Chumbo: 4200 PV, mais ataques desde a primeira fase e menos pausas.
 Pistoleiro Fantasma: 3800 PV, tiros rápidos com previsão de movimento,
