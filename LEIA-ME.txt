@@ -1,0 +1,45 @@
+ARENA DOS BOSSES — ARSENAL
+
+COMO JOGAR
+Extraia a pasta inteira e abra index.html no navegador do computador.
+Mantenha index.html, style.css e game.js juntos.
+Não precisa instalar dependências e não usa arquivos de áudio externos.
+
+CONTROLES
+WASD: mover. Mouse: mirar. Botão esquerdo: atirar.
+Espaço ou botão direito: dash.
+1–4 ou rodinha do mouse: trocar arma durante a luta.
+1–6: selecionar boss no menu de seleção.
+Esc: pausar/continuar. O ou botão ÁUDIO: configurações.
+R: reiniciar na pausa ou no fim da luta. M: escolher outro boss na pausa ou no fim.
+
+ARMAS (dano base, antes de blindagem e vulnerabilidade)
+Metralhadora: 8 de dano por tiro; intervalo 0,095 s; alcance 850.
+Escopeta: 8 projéteis de até 12 de dano; intervalo 0,8 s; alcance 350.
+A escopeta perde dano após 80 de distância e exige aproximação para acertar os 8 projéteis.
+Rifle: 100 de dano; intervalo 1,25 s; alcance 1100.
+Lança-foguetes: 140 de dano em área; intervalo 1,9 s; alcance 720; raio 100.
+A explosão atinge cada alvo uma única vez. Não causa dano ao próprio player.
+Cada arma guarda sua recarga, inclusive quando está guardada. Trocar leva 0,16 s.
+
+MUDANÇAS DESTA VERSÃO
+Carrasco de Chumbo: 4200 PV, mais ataques desde a primeira fase e menos pausas.
+Pistoleiro Fantasma: 3800 PV, tiros rápidos com previsão de movimento,
+rajadas laterais, ricochetes maiores e deslocamento durante os ataques.
+Rei Fungo: 4400 PV, mais áreas tóxicas, esporos rápidos e criaturas desde a primeira fase.
+Imperatriz do Vazio: 4100 PV, movimento e teleportes durante os ataques,
+sem indicar o destino e sem pausar o combate para teleportar.
+Cones e dispersões atingem toda a região marcada no instante do disparo.
+Fissuras de uma mesma sequência explodem juntas até o fim da área.
+Explosões aplicam dano na região inteira de uma vez, sem fragmentos lentos de dano.
+Textos de instrução durante os ataques removidos. A marcação geométrica das áreas continua.
+Projéteis inimigos mantêm no mínimo 7 pixels de raio.
+Invulnerabilidade depois de sofrer dano: 0,85 s. Proteção do dash preservada.
+As quatro armas, áudio e controles continuam disponíveis.
+
+VALIDAÇÃO
+80 combinações de ataques e fases executadas em simulação automatizada.
+Verificado dano imediato perto e longe, proteção fora da área e durante o dash,
+fissuras simultâneas, teleporte durante ataques e ausência de textos explicativos.
+Sintaxe JavaScript validada. A sensação da dificuldade e o áudio precisam ser
+conferidos jogando no navegador. Não foi validado para celular.

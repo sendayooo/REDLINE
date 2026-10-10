@@ -1,13 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Carrasco de Chumbo</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Arena dos Bosses — Arsenal</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="game"></canvas>
-<script src="game.js"></script>
+  <main aria-label="Arena dos Bosses">
+    <canvas id="game" aria-label="Jogo: WASD mover, mouse mirar e atirar, espaço esquivar, 1 a 4 trocar arma, Esc pausar"></canvas>
+    <button id="audio-toggle" aria-controls="audio-panel" aria-expanded="false" title="Configurações de áudio (O)">♫ ÁUDIO</button>
+    <section id="audio-panel" hidden aria-label="Configurações de áudio">
+      <div class="panel-title"><strong>ÁUDIO</strong><button id="audio-close" aria-label="Fechar configurações">×</button></div>
+      <label>Música <input id="music-volume" type="range" min="0" max="100" value="35"><output id="music-value">35%</output></label>
+      <label>Efeitos <input id="sfx-volume" type="range" min="0" max="100" value="65"><output id="sfx-value">65%</output></label>
+      <label class="mute"><input id="muted" type="checkbox"> Silenciar tudo</label>
+      <p>A luta pausa enquanto você ajusta o áudio.</p>
+    </section>
+  </main>
+  <script src="game.js"></script>
 </body>
 </html>
