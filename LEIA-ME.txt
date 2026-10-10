@@ -34,13 +34,14 @@ CONTATO E POWER-UPS
 Encostar no boss causa 1 coração de dano. Dash e invulnerabilidade são respeitados.
 A cada segundo de combate existe 5% de chance de surgir um power-up (média de 20 s).
 Cura: recupera 1 coração, até o máximo de 5.
-Escudo: bloqueia o próximo acerto. Não acumula.
-Perseguição: tiros seguem o boss por 8 segundos; paredes bloqueiam normalmente.
+Escudo: dura 15 segundos ou até bloquear 1 acerto.
+Perseguição: tiros seguem o boss por 10 segundos; paredes bloqueiam normalmente.
 Dano 2x: tiros disparados durante 8 segundos causam o dobro de dano.
 Lentidão: bosses, criaturas, projéteis inimigos e preparos de ataques ficam
-55% mais lentos por 6 segundos. Player, tiros aliados e recargas continuam normais.
-Atravessar: tiros passam pelos obstáculos por 8 segundos, mas não saem da arena.
-Efeitos diferentes podem combinar. Recolher o mesmo efeito renova sua duração.
+em 0,1x por 4 segundos reais. Player, tiros aliados e recargas continuam normais.
+Atravessar: tiros passam pelos obstáculos por 12 segundos, mas não saem da arena.
+Efeitos diferentes podem combinar. Recolher o mesmo efeito reinicia sua duração, sem somar tempo.
+Todos os efeitos têm contador na tela e expiram em segundos reais.
 Os tiros guardam perseguição, dano e atravessar que estavam ativos ao disparar.
 Power-ups somem após 15 segundos; no máximo 2 no chão. Pause congela os tempos.
 
@@ -74,5 +75,7 @@ Verificados os seis power-ups, dano de contato, escudo, perseguição bloqueada
 por paredes, atravessar obstáculos, dano dobrado e lentidão só dos inimigos.
 Verificadas sequências de 3, 4 e 5 investidas, preparo e recuperação,
 saltos, perseguição, combo de três golpes, dash de resposta e limpeza de ataques.
+Verificados tempos reais de cada efeito, renovação sem acumular, expiração
+do escudo e retorno à velocidade normal após 4 segundos de lentidão em 0,1x.
 Sintaxe JavaScript validada. A sensação da dificuldade e o áudio precisam ser
 conferidos jogando no navegador. Não foi validado para celular.

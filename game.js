@@ -664,7 +664,7 @@ function setupAudio() {
 function clearInput() { mouse.l = mouse.r = false; for (const k in keys) keys[k] = false; }
 function reset(id) {
   if (id) cur = id; def = BOSSES[cur]; PCOL = def.pcol; PAUSE = def.pause; PILLARS = def.obs; buildFloor();
-  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, homingT: 0, damageT: 0, slowT: 0, pierceT: 0, shield: false, lastDashAt: -Infinity, dashRefunded: false, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
+  P = { x: W / 2, y: H - 130, r: 11, hp: 5, inv: 0, vx: 0, vy: 0, dashT: 0, dashCd: 0, homingT: 0, damageT: 0, slowT: 0, pierceT: 0, shieldT: 0, shield: false, lastDashAt: -Infinity, dashRefunded: false, dvx: 0, dvy: 0, fireCd: 0, rec: 0, flashT: 0, walk: 0, face: -Math.PI / 2, weapon: 0, cooldowns: [0, 0, 0, 0], swapCd: 0 };
   B = { x: W / 2, y: 170, r: def.r, hp: def.hp, max: def.hp, shown: def.hp, vuln: 0, swT: 0, lz: null, core: 0, zn: [], mi: [], pt: [], duel: 0, duelA: 0, duelGo: false, parried: false, phase: 1, gen: null, wait: 1.8, hitT: 0, dead: false, deathT: 0, charging: false, chSpeed: 620, leap: null, cvx: 0, cvy: 0, chLeft: 0, chBoss: false, tele: null, phaseMsg: 0, last: -1, t: 0, tp: null, moveTarget: null, moveCd: 0 };
   pb = []; eb = []; haz = []; impacts = []; pickups = []; dropClock = 0; parts = []; ghosts = []; shake = 0; flash = 0; stateT = 0;
   run = { elapsed: 0, damage: 0, recorded: false }; musicClock = 0; musicStep = 0; clearInput();
@@ -687,7 +687,7 @@ function damageBoss(amount, effects = true) {
 }
 function hurt(n = 1) {
   if (P.inv > 0 || state !== 'play' || B.dead || P.hp <= 0) return false;
-  if (P.shield) { P.shield = false; P.inv = .3; ringFx(P.x, P.y, 50, '#8be5ff'); sound.play('armor'); return true; }
+  if (P.shield) { P.shield = false; P.shieldT = 0; P.inv = .3; ringFx(P.x, P.y, 50, '#8be5ff'); sound.play('armor'); return true; }
   run.damage += Math.min(n, P.hp); P.hp = Math.max(0, P.hp - n); P.inv = .85; shake = Math.max(shake, 12); flash = .35;
   sound.play('hurt'); burst(P.x, P.y, 16, '#ff4040', 200, 4);
   if (P.hp <= 0) { state = 'lose'; stateT = 0; burst(P.x, P.y, 40, '#cc3333', 300, 5); clearBossAttacks(); pb.length = 0; clearInput(); sound.play('lose'); }
@@ -810,7 +810,8 @@ function fire() {
 function updatePlayer(dt) {
   let ax=(keys.KeyD?1:0)-(keys.KeyA?1:0), ay=(keys.KeyS?1:0)-(keys.KeyW?1:0); const l=Math.hypot(ax,ay); if(l){ax/=l;ay/=l;}
   P.face=Math.atan2(mouse.y-P.y,mouse.x-P.x); P.inv-=dt; P.dashCd-=dt; P.flashT-=dt; P.rec=Math.max(0,P.rec-dt*8); P.swapCd=Math.max(0,P.swapCd-dt);
-  for(const timer of ['homingT','damageT','slowT','pierceT'])P[timer]=Math.max(0,P[timer]-dt);
+  for(const timer of ['homingT','damageT','slowT','pierceT','shieldT'])P[timer]=Math.max(0,P[timer]-dt);
+  if(P.shieldT<=0)P.shield=false;
   P.cooldowns=P.cooldowns.map(c=>Math.max(0,c-dt)); P.fireCd=P.cooldowns[P.weapon];
   if((mouse.r||keys.Space)&&P.dashCd<=0&&P.dashT<=0) { P.dvx=l?ax:Math.cos(P.face); P.dvy=l?ay:Math.sin(P.face); P.dashT=.18; P.dashCd=1.1; P.lastDashAt=run.elapsed; P.dashRefunded=false; P.inv=Math.max(P.inv,.3); shake=Math.max(shake,3); ringFx(P.x,P.y,40,'#99ccff'); sound.play('dash'); }
   if(P.dashT>0){P.dashT=Math.max(0,P.dashT-dt);P.vx=P.dvx*720;P.vy=P.dvy*720;if(ghosts.length<30)ghosts.push({x:P.x,y:P.y,a:P.face,life:.25});}
@@ -887,11 +888,11 @@ function updatePickups(dt) {
     if (item.life <= 0) { pickups.splice(i, 1); continue; }
     if (Math.hypot(P.x-item.x,P.y-item.y) > P.r+16) continue;
     if (item.type === 'heal') { if (P.hp >= 5) continue; P.hp = Math.min(5,P.hp+1); }
-    else if (item.type === 'homing') P.homingT = 8;
+    else if (item.type === 'homing') P.homingT = 10;
     else if (item.type === 'damage') P.damageT = 8;
-    else if (item.type === 'slow') P.slowT = 6;
-    else if (item.type === 'pierce') P.pierceT = 8;
-    else { if (P.shield) continue; P.shield = true; }
+    else if (item.type === 'slow') P.slowT = 4;
+    else if (item.type === 'pierce') P.pierceT = 12;
+    else { P.shield = true; P.shieldT = 15; }
     pickups.splice(i, 1); ringFx(P.x,P.y,45,'#ffe494'); sound.play('switch');
   }
 }
@@ -904,7 +905,7 @@ const POWERUPS = {
   damage: { color: '#ff9e58', symbol: '2×', name: 'DANO 2×', timer: 'damageT' },
   slow: { color: '#c4a0ff', symbol: '◷', name: 'LENTIDÃO', timer: 'slowT' },
   pierce: { color: '#ffe28b', symbol: '→', name: 'ATRAVESSAR', timer: 'pierceT' },
-  shield: { color: '#8be5ff', symbol: '◇', name: 'ESCUDO' }
+  shield: { color: '#8be5ff', symbol: '◇', name: 'ESCUDO', timer: 'shieldT' }
 };
 function drawPickups() {
   for (const p of pickups) {
@@ -919,13 +920,14 @@ function drawBuffs() {
   let row=0;
   for(const power of Object.values(POWERUPS)) {
     if(power.timer&&P[power.timer]>0)txt(power.name+' '+Math.ceil(P[power.timer])+'s',22,91+row++*17,11,power.color,'left');
-    else if(power.name==='ESCUDO'&&P.shield)txt('ESCUDO',22,91+row++*17,11,power.color,'left');
+
   }
 }
 function update(dt) {
   if(!B.dead)run.elapsed+=dt;
+  const slowedTime=Math.min(dt,P.slowT);
   updatePlayer(dt); bossContact(); if(state!=='play')return;
-  const enemyDt=dt*(P.slowT>0?.45:1);
+  const enemyDt=dt-slowedTime*.9;
   updateBoss(enemyDt); bossContact(); if(state!=='play')return;
   updatePickups(dt);
   if(!B.dead){updateBullets(dt,enemyDt);if(state!=='play')return;if(!B.dead)updateHaz(enemyDt);}
